@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mixxx — Live Status</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      padding: 1.5rem;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1.5rem;
+    }
+
+    h1 { font-size: 1.4rem; letter-spacing: 0.05em; color: #f8fafc; }
+
+    #status-bar {
+      font-size: 0.78rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    #dot {
+      width: 9px; height: 9px;
+      border-radius: 50%;
+      background: #4b5563;
+      transition: background 0.3s;
+    }
+    #dot.live   { background: #22c55e; box-shadow: 0 0 6px #22c55e; }
+    #dot.error  { background: #ef4444; }
+
+    #last-received { color: #94a3b8; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 1rem;
+    }
+
+    .card {
+      background: #1e2130;
+      border: 1px solid #2d3348;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .np-artwork-wrap {
+      padding: 0.5rem 0.9rem 0.2rem;
+      display: none;
+    }
+    .np-artwork-wrap.visible { display: block; }
+    .np-artwork-thumb {
+      width: 64px;
+      height: 64px;
+      object-fit: cover;
+      border-radius: 5px;
+      display: block;
+    }
+
+    .card-title {
+      background: #262d42;
+      padding: 0.55rem 0.9rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #94a3b8;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.82rem;
+    }
+
+    tr { border-bottom: 1px solid #2a3040; }
+    tr:last-child { border-bottom: none; }
+
+    td {
+      padding: 0.42rem 0.9rem;
+      vertical-align: middle;
+    }
+
+    td:first-child { color: #94a3b8; width: 55%; }
+    td:last-child  { color: #f1f5f9; font-variant-numeric: tabular-nums; text-align: right; }
+
+    .badge {
+      display: inline-block;
+      padding: 0.15em 0.55em;
+      border-radius: 4px;
+      font-size: 0.72rem;
+      font-weight: 600;
+    }
+    /* Status badges — blue palette: unambiguously "read-only info, not a button" */
+    .badge-on      { background: #1e3a5f; color: #7dd3fc; }
+    .badge-off     { background: #1a1f2e; color: #475569; }
+    .badge-play    { background: #164e63; color: #67e8f9; }
+    .badge-pending { background: #422006; color: #fb923c; }
+
+    #waiting {
+      text-align: center;
+      color: #4b5563;
+      padding: 3rem 0;
+      font-size: 0.9rem;
+    }
+
+    /* ── Controls ───────────────────────────────────────────────── */
+    .ctrl-section {
+      padding: 0.6rem 0.9rem;
+      border-top: 2px solid #1a1f2e;
+      display: flex;
+      flex-direction: column;
+      gap: 0.7rem;
+    }
+
+    .ctrl-section-title {
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #374151;
+      margin-bottom: 0.1rem;
+    }
+
+    .ctrl-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.5rem;
+    }
+
+    .ctrl-row > label {
+      font-size: 0.75rem;
+      color: #64748b;
+      width: 5.8rem;
+      flex-shrink: 0;
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 0.3rem;
+    }
+
+    .btn-toggle {
+      padding: 0.22em 0.65em;
+      border-radius: 4px;
+      border: none;
+      cursor: pointer;
+      font-size: 0.73rem;
+      font-weight: 700;
+      transition: background 0.15s, color 0.15s;
+      min-width: 3.8rem;
+    }
+    /* Control buttons — green = enabled, red = disabled; clear at a glance */
+    .btn-on       { background: #14532d; color: #4ade80; }
+    .btn-off      { background: #450a0a; color: #f87171; }
+    .btn-play-on  { background: #1e3a5f; color: #60a5fa; min-width: 5rem; }
+    .btn-play-off { background: #3b0a0a; color: #fca5a5; min-width: 5rem; }
+
+    .btn-moment {
+      padding: 0.22em 0.65em;
+      border-radius: 4px;
+      border: none;
+      cursor: pointer;
+      font-size: 0.73rem;
+      font-weight: 600;
+      background: #262d42;
+      color: #94a3b8;
+      transition: background 0.1s;
+    }
+    .btn-moment:active { filter: brightness(1.3); }
+
+    .btn-danger  { background: #450a0a; color: #f87171; }
+    .btn-action  { background: #1c2a46; color: #93c5fd; }
+    .btn-warning { background: #431407; color: #fb923c; }
+
+    .btn-mode {
+      padding: 0.2em 0.55em;
+      border-radius: 4px;
+      border: 1px solid #2d3348;
+      background: #1f2937;
+      color: #6b7280;
+      cursor: pointer;
+      font-size: 0.71rem;
+      font-weight: 600;
+      transition: background 0.1s, color 0.1s;
+    }
+    .btn-mode-active { background: #1e3a5f; color: #60a5fa; border-color: #3b82f6; }
+
+    .slider-wrap {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      flex: 1;
+    }
+    .ctrl-slider {
+      width: 100%;
+      accent-color: #3b82f6;
+      cursor: pointer;
+      height: 1.5rem;
+    }
+    .slider-val {
+      font-size: 0.73rem;
+      color: #94a3b8;
+      width: 100%;
+      background: #131720;
+      border: 1px solid #2d3348;
+      border-radius: 3px;
+      padding: 0.15em 0.4em;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+    .slider-val:focus {
+      outline: 1px solid #3b82f6;
+      color: #f1f5f9;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex;align-items:center;gap:0.8rem;">
+    <h1>Mixxx &mdash; Live Status</h1>
+  </div>
+  <div style="display:flex;align-items:center;gap:1rem;">
+    <div id="status-bar">
+      <div id="dot"></div>
+      <span id="ws-state">Connecting&hellip;</span>
+      <span id="last-received"></span>
+    </div>
+  </div>
+</header>
+
+<div id="waiting">Waiting for data…</div>
+<div class="grid" id="grid" style="display:none"></div>
+
+<script>
+  const _host  = window.location.hostname;
+  const API    = `http://${_host}:5002`;
+  const API_WS = `ws://${_host}:5002/ws`;
+
+  const dot      = document.getElementById('dot');
+  const wsState  = document.getElementById('ws-state');
+  const lastRecv = document.getElementById('last-received');
+  const grid     = document.getElementById('grid');
+  const waiting  = document.getElementById('waiting');
+
+  const dragging   = new Set();   // slider ids currently being dragged
+  let   initialized = false;
+
+  // ── Formatting helpers ──────────────────────────────────────────────────────
+  function badge(val) {
+    const on = val === true || val === 1;
+    return `<span class="badge ${on ? 'badge-on' : 'badge-off'}">${on ? 'ON' : 'OFF'}</span>`;
+  }
+  function playBadge(val) {
+    const on = val === true || val === 1;
+    return `<span class="badge ${on ? 'badge-play' : 'badge-off'}">${on ? 'Playing' : 'Stopped'}</span>`;
+  }
+  function trackLoadedBadge(val) {
+    const on = val === true || val === 1;
+    return `<span class="badge ${on ? 'badge-on' : 'badge-off'}">${on ? 'Loaded' : 'Empty'}</span>`;
+  }
+  const SHOUT_STATES   = { 0:'Disconnected', 1:'Pending', 2:'Connected' };
+  const SHOUT_CLASSES  = { 0:'badge-off',    1:'badge-pending', 2:'badge-on' };
+  function shoutcastBadge(val) {
+    return `<span class="badge ${SHOUT_CLASSES[val]??'badge-off'}">${SHOUT_STATES[val]??`State ${val}`}</span>`;
+  }
+  function num(val) {
+    if (val === null || val === undefined) return '—';
+    return parseFloat(val).toFixed(3).replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
+  }
+  function hms(val) {
+    if (val === null || val === undefined) return '—';
+    const t  = Math.floor(Math.abs(parseFloat(val)));
+    const h  = Math.floor(t / 3600);
+    const m  = Math.floor((t % 3600) / 60);
+    const s  = t % 60;
+    const mm = String(m).padStart(2, '0');
+    const ss = String(s).padStart(2, '0');
+    return h > 0 ? `${h}:${mm}:${ss}` : `${m}:${ss}`;
+  }
+
+  // ── API helper ──────────────────────────────────────────────────────────────
+  async function post(path, body = null) {
+    const opts = { method: 'POST' };
+    if (body !== null) {
+      opts.headers = { 'Content-Type': 'application/json' };
+      opts.body = JSON.stringify(body);
+    }
+    try { await fetch(API + path, opts); }
+    catch (e) { console.warn('API error:', path, e); }
+  }
+
+  // ── HTML snippet helpers ────────────────────────────────────────────────────
+  // Status value span
+  function sv(id) { return `<span id="s-${id}">—</span>`; }
+
+  function sliderRow(label, id, min, max, step, initVal) {
+    const v = initVal !== undefined ? initVal : min;
+    return `<div class="ctrl-row">
+        <label>${label}</label>
+        <div class="slider-wrap">
+          <input type="range" id="c-${id}" class="ctrl-slider"
+                 min="${min}" max="${max}" step="${step}" value="${v}">
+          <input type="number" id="c-${id}-val" class="slider-val"
+                 min="${min}" max="${max}" step="${step}" value="${num(v)}">
+        </div>
+      </div>`;
+  }
+
+  function toggleBtn(id, label) {
+    return `<button id="c-${id}" class="btn-toggle btn-off" data-state="0">${label}</button>`;
+  }
+
+  function momentBtn(id, label, cls = '') {
+    return `<button id="c-${id}" class="btn-moment ${cls}">${label}</button>`;
+  }
+
+  // ── Card HTML (built once) ──────────────────────────────────────────────────
+  function channelCardHtml(n) {
+    const p = `ch${n}`;
+    return `<div class="card">
+      <div class="card-title">Channel ${n}</div>
+      <table>
+        <tr><td>Track Loaded</td>  <td>${sv(p+'-track_loaded')}</td></tr>
+        <tr><td>Show</td>          <td>${sv(p+'-is_show')}</td></tr>
+        <tr><td>BPM</td><td><div style="display:flex;align-items:center;justify-content:flex-end;gap:0.3rem">${sv(p+'-bpm')}<input type="number" id="c-${p}-bpm-set" class="slider-val" style="width:4.5rem" min="40" max="220" step="0.5" placeholder="—"><button id="c-${p}-bpm-btn" class="btn-moment btn-action" style="font-size:0.7rem;padding:0.15em 0.5em">Set</button></div></td></tr>
+        <tr><td>Duration</td>      <td>${sv(p+'-duration')}</td></tr>
+        <tr><td>Time Remaining</td><td>${sv(p+'-time_remaining')}</td></tr>
+        <tr><td>End of Track</td>  <td>${sv(p+'-end_of_track')}</td></tr>
+      </table>
+      <div class="ctrl-section">
+        <div class="ctrl-section-title">Controls</div>
+        <div class="ctrl-row">
+          <label>Play</label>
+          <div class="btn-group">
+            <button id="c-${p}-play" class="btn-toggle btn-play-off" data-state="0">Stopped</button>
+            ${momentBtn(p+'-eject', '⏏ Eject', 'btn-danger')}
+          </div>
+        </div>
+        ${sliderRow('Volume',    p+'-volume',  0,   1,    0.01, 0.8)}
+        ${sliderRow('Pre-gain',  p+'-pregain', 0,   3.98, 0.01, 1.0)}
+        ${sliderRow('Rate (%)',  p+'-rate',   -10,  10,   0.1,  0)}
+        ${sliderRow('Pitch (st)',p+'-pitch',  -12,  12,   0.1,  0)}
+        <div class="ctrl-row">
+          <label>Sync</label>
+          ${toggleBtn(p+'-sync_enabled', 'Sync')}
+        </div>
+        <div class="ctrl-row">
+          <label>Sync Leader</label>
+          ${toggleBtn(p+'-sync_leader', 'Leader')}
+        </div>
+        <div class="ctrl-row">
+          <label>Quantize</label>
+          ${toggleBtn(p+'-quantize', 'Quantize')}
+        </div>
+      </div>
+    </div>`;
+  }
+
+  function mixerCardHtml() {
+    return `<div class="card">
+      <div class="card-title">Mixer</div>
+      <div class="ctrl-section">
+        <div class="ctrl-section-title">Controls</div>
+        ${sliderRow('Master Gain', 'master-gain',        0, 5.01, 0.01, 1)}
+        ${sliderRow('Crossfader',  'master-crossfader', -1, 1,    0.01, 0)}
+        ${sliderRow('Duck Strength', 'master-duck_strength', 0, 1, 0.01, 0.5)}
+        <div class="ctrl-row">
+          <label>Talkover Mode</label>
+          <div class="btn-group">
+            <button id="c-master-duck-0" class="btn-mode">Off</button>
+            <button id="c-master-duck-1" class="btn-mode">Auto</button>
+            <button id="c-master-duck-2" class="btn-mode">Manual</button>
+          </div>
+        </div>
+        <div class="ctrl-row">
+          <label>Mic Talkover</label>
+          ${toggleBtn('misc-talkover', 'OFF')}
+        </div>
+        <div class="ctrl-row">
+          <label>AutoDJ</label>
+          ${toggleBtn('autodj-enabled', 'OFF')}
+        </div>
+        <div class="ctrl-row">
+          <label></label>
+          <div class="btn-group">
+            ${momentBtn('autodj-fade_now',   'Fade Now')}
+            ${momentBtn('autodj-shuffle',    'Shuffle')}
+            ${momentBtn('autodj-add_random', '+ Random Track')}
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  function miscCardHtml() {
+    return `<div class="card">
+      <div class="card-title">Misc</div>
+      <table>
+        <tr>
+          <td>Shoutcast</td>
+          <td><button id="c-misc-shoutcast" class="btn-toggle btn-off" data-state="0">OFF</button></td>
+        </tr>
+        <tr><td>Shoutcast State</td> <td>${sv('misc-shoutcast-state')}</td></tr>
+      </table>
+      <div class="ctrl-section">
+
+      <div class="ctrl-section">
+        <div class="ctrl-section-title">Clock</div>
+        ${sliderRow('BPM', 'clock-bpm', 40, 200, 0.5, 120)}
+        <div class="ctrl-row">
+          <label>Sync Leader</label>
+          ${toggleBtn('clock-sync_leader', 'OFF')}
+        </div>
+      </div>
+      <table>
+        <tr><td>Ch1 Pitch Fader Invert</td> <td>${sv('ch1-rate_dir')}</td></tr>
+        <tr><td>Ch1 Pitch Range %</td>      <td>${sv('ch1-rate_range_pct')}</td></tr>
+        <tr><td>Ch2 Pitch Fader Invert</td> <td>${sv('ch2-rate_dir')}</td></tr>
+        <tr><td>Ch2 Pitch Range %</td>      <td>${sv('ch2-rate_range_pct')}</td></tr>
+      </table>
+    </div>`;
+  }
+
+  // ── Build grid once ─────────────────────────────────────────────────────────
+  function buildGrid() {
+    grid.innerHTML =
+      channelCardHtml(1) +
+      mixerCardHtml()    +
+      channelCardHtml(2) +
+      miscCardHtml();
+    attachListeners();
+    initialized = true;
+  }
+
+  // ── DOM update helpers ──────────────────────────────────────────────────────
+  function setSpan(id, html) {
+    const el = document.getElementById(`s-${id}`);
+    if (el) el.innerHTML = html;
+  }
+
+  function setToggle(id, val) {
+    const el = document.getElementById(`c-${id}`);
+    if (!el) return;
+    const on = val === true || val === 1;
+    el.dataset.state = on ? '1' : '0';
+    // Play buttons get special classes
+    if (id.endsWith('-play')) {
+      el.className = 'btn-toggle ' + (on ? 'btn-play-on' : 'btn-play-off');
+      el.textContent = on ? 'Playing' : 'Stopped';
+    } else {
+      el.className = 'btn-toggle ' + (on ? 'btn-on' : 'btn-off');
+      el.textContent = on ? 'ON' : 'OFF';
+    }
+  }
+
+  function setSlider(id, val) {
+    const cid = `c-${id}`;
+    if (dragging.has(cid)) return;
+    const sl  = document.getElementById(cid);
+    const lbl = document.getElementById(`${cid}-val`);
+    if (!sl || val === null || val === undefined) return;
+    sl.value = val;
+    if (lbl) lbl.value = num(val);
+  }
+
+  function setDuckMode(mode) {
+    [0, 1, 2].forEach(m => {
+      const el = document.getElementById(`c-master-duck-${m}`);
+      if (el) el.className = 'btn-mode' + (m === mode ? ' btn-mode-active' : '');
+    });
+  }
+
+  // ── Slider event wiring ─────────────────────────────────────────────────────
+  function wireSlider(id, onRelease) {
+    const el  = document.getElementById(`c-${id}`);
+    const inp = document.getElementById(`c-${id}-val`);
+    if (!el) return;
+    el.addEventListener('pointerdown', () => dragging.add(`c-${id}`));
+    el.addEventListener('pointerup',   () => { dragging.delete(`c-${id}`); onRelease(parseFloat(el.value)); });
+    el.addEventListener('input',       () => {
+      if (inp) inp.value = num(parseFloat(el.value));
+    });
+    if (inp) {
+      inp.addEventListener('change', () => {
+        const v = Math.min(parseFloat(el.max), Math.max(parseFloat(el.min), parseFloat(inp.value) || 0));
+        inp.value = num(v);
+        el.value  = v;
+        onRelease(v);
+      });
+    }
+  }
+
+  // ── Attach all control listeners ────────────────────────────────────────────
+  function attachListeners() {
+    [1, 2].forEach(n => {
+      const p = `ch${n}`;
+
+      // Play toggle
+      document.getElementById(`c-${p}-play`).addEventListener('click', function () {
+        post(`/api/control/channel/${n}/play`, { play: this.dataset.state === '0' });
+      });
+
+      // Eject
+      document.getElementById(`c-${p}-eject`).addEventListener('click', () =>
+        post(`/api/control/channel/${n}/eject`));
+
+      // BPM set
+      (() => {
+        const input = document.getElementById(`c-${p}-bpm-set`);
+        const btn   = document.getElementById(`c-${p}-bpm-btn`);
+        const send  = () => { const v = parseFloat(input.value); if (!isNaN(v) && v > 0) post(`/api/control/channel/${n}/bpm`, { value: v }); };
+        input.addEventListener('keydown', e => { if (e.key === 'Enter') { send(); input.blur(); } });
+        btn.addEventListener('click', send);
+      })();
+
+      // Sliders
+      wireSlider(`${p}-volume`,  v => post(`/api/control/channel/${n}/volume`,  { value: v }));
+      wireSlider(`${p}-pregain`, v => post(`/api/control/channel/${n}/pregain`, { value: v }));
+      wireSlider(`${p}-rate`,    v => post(`/api/control/channel/${n}/rate`,    { value: v }));
+      wireSlider(`${p}-pitch`,   v => post(`/api/control/channel/${n}/pitch`,   { value: v }));
+
+      // Toggle buttons
+      ['sync_enabled', 'sync_leader', 'quantize'].forEach(field => {
+        document.getElementById(`c-${p}-${field}`).addEventListener('click', function () {
+          post(`/api/control/channel/${n}/${field}`, { enabled: this.dataset.state === '0' });
+        });
+      });
+    });
+
+    // Internal clock
+    wireSlider('clock-bpm', v => post('/api/control/internal_clock/bpm', { value: v }));
+    document.getElementById('c-clock-sync_leader').addEventListener('click', function () {
+      post('/api/control/internal_clock/sync_leader', { enabled: this.dataset.state === '0' });
+    });
+
+    // AutoDJ
+    document.getElementById('c-autodj-enabled').addEventListener('click', function () {
+      post('/api/control/auto_dj/enabled', { enabled: this.dataset.state === '0' });
+    });
+    document.getElementById('c-autodj-fade_now').addEventListener('click',   () => post('/api/control/auto_dj/fade_now'));
+    document.getElementById('c-autodj-shuffle').addEventListener('click',    () => post('/api/control/auto_dj/shuffle_playlist'));
+    document.getElementById('c-autodj-add_random').addEventListener('click', () => post('/api/control/auto_dj/add_random_track'));
+
+    // Master
+    wireSlider('master-crossfader',   v => post('/api/control/crossfader',              { value: v }));
+    wireSlider('master-gain',         v => post('/api/control/master/gain',             { value: v }));
+    wireSlider('master-duck_strength',v => post('/api/control/master/duck_strength',    { value: v }));
+    [0, 1, 2].forEach(mode =>
+      document.getElementById(`c-master-duck-${mode}`).addEventListener('click', () =>
+        post('/api/control/master/talkover_ducking', { mode })));
+
+    // Misc
+    document.getElementById('c-misc-talkover').addEventListener('click', function () {
+      post('/api/control/microphone/talkover', { enabled: this.dataset.state === '0' });
+    });
+    // Shoutcast toggle
+    document.getElementById('c-misc-shoutcast').addEventListener('click', function () {
+      post('/api/control/shoutcast/enabled', { enabled: this.dataset.state === '0' });
+    });
+  }
+
+  // ── Update all status spans + sliders from live data ────────────────────────
+  function updateStatus(data) {
+    const ch = data.channels || {};
+
+    [1, 2].forEach(n => {
+      const c = ch[String(n)] || {};
+      const p = `ch${n}`;
+      if (c.play          !== undefined) { setSpan(p+'-play',          playBadge(c.play));       setToggle(p+'-play', c.play); }
+      if (c.bpm           !== undefined) {
+        setSpan(p+'-bpm', num(c.bpm));
+        const _bi = document.getElementById(`c-${p}-bpm-set`);
+        if (_bi && document.activeElement !== _bi) _bi.value = num(c.bpm);
+      }
+      if (c.rate_pct        !== undefined) { setSpan(p+'-rate',          num(c.rate_pct));         setSlider(p+'-rate',  c.rate_pct); }
+      if (c.pitch_semitones !== undefined) { setSpan(p+'-pitch',         num(c.pitch_semitones));  setSlider(p+'-pitch', c.pitch_semitones); }
+      if (c.volume        !== undefined) { setSpan(p+'-volume',        num(c.volume));           setSlider(p+'-volume',  c.volume); }
+      if (c.pregain       !== undefined) { setSpan(p+'-pregain',       num(c.pregain));          setSlider(p+'-pregain', c.pregain); }
+      if (c.duration      !== undefined)   setSpan(p+'-duration',      hms(c.duration));
+      if (c.time_remaining!== undefined)   setSpan(p+'-time_remaining',hms(c.time_remaining));
+      if (c.track_loaded   !== undefined)   setSpan(p+'-track_loaded',  trackLoadedBadge(c.track_loaded));
+      if (c.duration      !== undefined)   setSpan(p+'-is_show', (() => { const s = c.duration > 1200; return `<span class="badge ${s ? 'badge-on' : 'badge-off'}">${s ? 'true' : 'false'}</span>`; })());
+      if (c.end_of_track  !== undefined)   setSpan(p+'-end_of_track',  badge(c.end_of_track));
+      if (c.rate_dir       !== undefined)   setSpan(p+'-rate_dir',      c.rate_dir ?? '—');
+      if (c.rate_range_pct !== undefined)   setSpan(p+'-rate_range_pct',num(c.rate_range_pct));
+      if (c.sync_enabled  !== undefined) { setSpan(p+'-sync_enabled',  badge(c.sync_enabled));  setToggle(p+'-sync_enabled', c.sync_enabled); }
+      if (c.sync_leader   !== undefined) { setSpan(p+'-sync_leader',   badge(c.sync_leader));   setToggle(p+'-sync_leader',  c.sync_leader); }
+      if (c.quantize      !== undefined) { setSpan(p+'-quantize',      badge(c.quantize));      setToggle(p+'-quantize',     c.quantize); }
+    });
+
+    const clk = data.internal_clock || {};
+    if (clk.bpm         !== undefined) { setSpan('clock-bpm',         num(clk.bpm));            setSlider('clock-bpm', clk.bpm); }
+    if (clk.sync_leader !== undefined) { setSpan('clock-sync_leader', badge(clk.sync_leader));  setToggle('clock-sync_leader', clk.sync_leader); }
+
+    const dj = data.auto_dj || {};
+    if (dj.enabled          !== undefined) { setSpan('autodj-enabled',    badge(dj.enabled));           setToggle('autodj-enabled', dj.enabled); }
+    if (dj.fade_now         !== undefined)   setSpan('autodj-fade_now',   badge(dj.fade_now));
+    if (dj.shuffle_playlist !== undefined)   setSpan('autodj-shuffle',    badge(dj.shuffle_playlist));
+    if (dj.add_random_track !== undefined)   setSpan('autodj-add_random', badge(dj.add_random_track));
+
+    const m = data.master || {};
+    if (data.crossfader     !== undefined) { setSpan('master-crossfader',   num(data.crossfader));   setSlider('master-crossfader',    data.crossfader); }
+    if (m.gain              !== undefined) { setSpan('master-gain',         num(m.gain));            setSlider('master-gain',          m.gain); }
+    if (m.talkover_ducking  !== undefined) { const DUCK_LABELS = {0:'Off',1:'Auto',2:'Manual'}; setSpan('master-ducking', DUCK_LABELS[m.talkover_ducking] ?? `Mode ${m.talkover_ducking}`); setDuckMode(m.talkover_ducking); }
+    if (m.duck_strength     !== undefined) { setSpan('master-duck_strength',num(m.duck_strength));   setSlider('master-duck_strength', m.duck_strength); }
+
+    const mic   = data.microphone || {};
+    const shout = data.shoutcast  || {};
+    if (mic.talkover   !== undefined) { setSpan('misc-talkover',       badge(mic.talkover));          setToggle('misc-talkover',  mic.talkover); }
+    if (shout.enabled  !== undefined) setToggle('misc-shoutcast', shout.enabled);
+    if (shout.status   !== undefined)   setSpan('misc-shoutcast-state',shoutcastBadge(shout.status));
+
+
+  }
+
+  // ── Render ───────────────────────────────────────────────────────────────────
+  function render(data) {
+    waiting.style.display = 'none';
+    grid.style.display    = '';
+    if (!initialized) buildGrid();
+    updateStatus(data);
+    if (data.last_received) {
+      lastRecv.textContent = '— ' + new Date(data.last_received).toLocaleTimeString();
+    }
+  }
+
+  // ── WebSocket ────────────────────────────────────────────────────────────────
+  function connect() {
+    const ws = new WebSocket(API_WS);
+    ws.onopen    = () => { dot.className = 'live';  wsState.textContent = 'Live'; };
+    ws.onmessage = (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        render(data);
+      } catch {}
+    };
+    ws.onclose   = () => { dot.className = 'error'; wsState.textContent = 'Disconnected — retrying…'; setTimeout(connect, 3000); };
+    ws.onerror   = () => { dot.className = 'error'; wsState.textContent = 'Error'; };
+  }
+
+
+
+
+
+
+
+  connect();
+</script>
+</body>
+</html>
