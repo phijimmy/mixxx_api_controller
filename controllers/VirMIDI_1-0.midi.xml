@@ -9,7 +9,6 @@
             <file filename="mixxx_controller.js" functionprefix="mabc"/>
         </scriptfiles>
         <controls>
-            <!-- Control commands from midi_json_translator (channel 1 = 0x91) -->
             <!-- Uses script-binding so JS can call engine.setValue() directly,
                  bypassing ControlPushButton toggle-mode which ignores vel=0 -->
             <control>

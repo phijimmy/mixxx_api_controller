@@ -83,8 +83,6 @@ class FloatPayload(BaseModel):
 class TalkoverDuckingPayload(BaseModel):
     mode: int
 
-# --- API Endpoints (all from status_server_v1.py) ---
-
 # --- Status Endpoints ---
 @app.post("/api/status", status_code=204)
 async def receive_status(payload: dict):
@@ -336,7 +334,6 @@ except ImportError:
     def midi_port_to_device(port):
         return f"/dev/snd/midiC1D0"
 
-# MIDI control constants (copy from midi_json_translator.py)
 CTRL_CHANNEL = 1
 CTRL_AUTO_DJ_EN = 0x19
 CTRL_AUTO_DJ_FADE_NOW = 0x1A
@@ -393,7 +390,6 @@ CTRL_CH2_PREGAIN_FRAC = 0x4C
 CTRL_MASTER_GAIN_INT = 0x4D
 CTRL_MASTER_GAIN_FRAC = 0x4E
 
-# Frame notes (copy from midi_json_translator.py)
 FRAME_START = 0x63
 FRAME_END = 0x64
 AUTO_DJ_STATUS = 0x65
